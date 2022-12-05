@@ -3,6 +3,7 @@ from django.views.generic import ListView, DetailView, CreateView, UpdateView
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from .models import Post, Category, Tag
 from django.core.exceptions import PermissionDenied
+from django.utils.text import slugify
 
 class PostList(ListView) :
     model = Post
@@ -37,6 +38,27 @@ class PostCreate(LoginRequiredMixin, UserPassesTestMixin, CreateView):
         current_user = self.request.user
         if current_user.is_authenticated and (current_user.is_staff or current_user.is_superuser):
             form.instance.author = current_user
+            response = super(PostCreate, self).form_valid(form)
+
+            tags_str = self.request.POST.get('tags_str')
+            if tags_str:
+                tags_str = tags_str.strip()
+
+                tags_str = tags_str.replace(',', ';')
+                tags_list = tags_str.split(';')
+
+                for t in tags_list:
+                    t = t.strip()
+                    tag, is_tag_create = Tag.objects.get_or_create(name=t)
+                    if is_tag_create:
+                        tag.slug = slugify(t, allow_unicode=True)
+                        tag.save()
+                    self.object.tags.add(tag)
+
+
+            return response
+
+
             return super(PostCreate, self).form_valid(form)
         else:
             return redirect('/blog/')
@@ -46,7 +68,7 @@ class PostUpdate(LoginRequiredMixin, UpdateView):
     model = Post
     fields = ['title', 'hook_text', 'content', 'head_image', 'file_upload', 'category', 'tags']
 
-    template_name = 'blog/post_update_from.html'
+    template_name = 'blog/post_update_form.html'
 
     def dispatch(self, request, *args, **kwargs):
         if request.user.is_authenticated and request.user == self.get_object().author:
